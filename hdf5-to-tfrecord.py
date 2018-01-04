@@ -53,6 +53,9 @@ def convert_to(directory, dataset_name):
     print('Writing', filename)
 
     with tf.python_io.TFRecordWriter(filename) as writer:
+
+        unique_values = {}
+
         for file in files:
             try:
                 data = read_hdf5(file)
@@ -62,6 +65,13 @@ def convert_to(directory, dataset_name):
 
             point_cloud = data['point_cloud']
             labels = data['obj_labels']
+
+            u, counts = np.unique(labels, return_counts=True)
+            for u, count in zip(u, counts):
+                if u in unique_values:
+                    unique_values[u] += count
+                else:
+                    unique_values[u] = count
 
             num_points = point_cloud.shape[0]
 
@@ -80,6 +90,8 @@ def convert_to(directory, dataset_name):
             )
             writer.write(example.SerializeToString())
 
+        print("Unique values in dataset '{}': {}".format(dataset_name, unique_values))
+
 
 def main(unused_argv):
 
@@ -93,6 +105,7 @@ if __name__ == '__main__':
         """
         'Type' for argparse - checks that file exists but does not open.
         """
+        x = os.path.expanduser(x)
         if not os.path.isdir(x):
             raise argparse.ArgumentTypeError("{0} is not a directory".format(x))
         return x
