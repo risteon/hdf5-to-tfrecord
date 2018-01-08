@@ -17,6 +17,11 @@ import tensorflow as tf
 import numpy as np
 import h5py
 
+bar_available = True
+try:
+    import progessbar
+except ImportError:
+    bar_available = False
 
 FLAGS = None
 
@@ -67,7 +72,11 @@ def convert_to(directory, dataset_name, samples_per_file=None):
     f_str = '0{}d'.format(digits)
     filename = os.path.join(directory, dataset_name + '_{{:{}}}_of_{{:{}}}.tfrecords'.format(f_str, f_str))
 
+    if bar_available:
+        bar = progressbar.ProgressBar(redirect_stdout=True, max_value=len(files))
+
     filelist = []
+    processed_counter = 0
     for file_counter in range(total):
 
         f_name = filename.format(file_counter+1, total)
@@ -109,6 +118,10 @@ def convert_to(directory, dataset_name, samples_per_file=None):
                     )
                 )
                 writer.write(example.SerializeToString())
+
+                if bar_available:
+                    bar.update(processed_counter)
+                processed_counter += 1
 
     # write filelist
     f_list_name = os.path.join(directory, 'tf_dataset_{}.txt'.format(dataset_name))
