@@ -19,7 +19,7 @@ import h5py
 
 bar_available = True
 try:
-    import progessbar
+    import progressbar
 except ImportError:
     bar_available = False
 
@@ -28,7 +28,7 @@ FLAGS = None
 
 def read_hdf5(path):
 
-    sets_to_read = ['point_cloud', 'obj_labels', 'pointwise_boxes']
+    sets_to_read = ['point_cloud', 'obj_labels']
     hdf5 = h5py.File(path, "r")
     r = {s: np.array(hdf5[s]) for s in sets_to_read}
     hdf5.close()
@@ -93,7 +93,6 @@ def convert_to(directory, dataset_name, samples_per_file=None):
 
                 point_cloud = data['point_cloud']
                 labels = data['obj_labels']
-                boxes = data['pointwise_boxes']
 
                 # count labels (0, 1, 255)
                 u, counts = np.unique(labels, return_counts=True)
@@ -104,16 +103,15 @@ def convert_to(directory, dataset_name, samples_per_file=None):
                         unique_values[u] = count
 
                 num_points = point_cloud.shape[0]
-                if num_points != labels.shape[0] or num_points != boxes.shape[0]:
-                    raise RuntimeError("Point cloud size does not match label size in {} ({} vs. {}/{})"
-                                       .format(file, point_cloud.shape[0], labels.shape[0], boxes.shape[0]))
+                if num_points != labels.shape[0] or num_points != labels.shape[0]:
+                    raise RuntimeError("Point cloud size does not match label size in {} ({} vs. {})"
+                                       .format(file, point_cloud.shape[0], labels.shape[0]))
 
                 example = tf.train.Example(
                     features=tf.train.Features(
                         feature={
                             'points': _float_array_feature(point_cloud.flatten()),
                             'label': _int_array_feature(labels),
-                            'boxes': _float_array_feature(boxes.flatten()),
                         }
                     )
                 )
