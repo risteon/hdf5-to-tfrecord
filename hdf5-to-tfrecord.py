@@ -26,13 +26,34 @@ except ImportError:
 FLAGS = None
 
 
-def read_hdf5(path):
+def read_hdf5(path, data_format=None):
 
-    sets_to_read = ['point_cloud', 'obj_labels']
-    hdf5 = h5py.File(path, "r")
-    r = {s: np.array(hdf5[s]) for s in sets_to_read}
-    hdf5.close()
-    return r
+    if not data_format:
+        sets_to_read = ['point_cloud', 'obj_labels']
+        hdf5 = h5py.File(path, "r")
+        r = {s: np.array(hdf5[s]) for s in sets_to_read}
+        hdf5.close()
+        return r
+
+    if data_format == 'lidar_semantics':
+        column_begin = 650
+        column_end = 1100
+
+        r = {}
+        with h5py.File(path, 'r') as f:
+            labels = np.array(f['labels']).astype(np.uint8)
+            points = np.ndarray(shape=labels.shape + (3, ), dtype=np.float32)
+            points[..., 0] = f['sensorX']
+            points[..., 1] = f['sensorY']
+            points[..., 2] = f['sensorZ']
+
+            r['obj_labels'] = labels[:, column_begin:column_end].flatten()
+            r['point_cloud'] = np.reshape(points[:, column_begin:column_end, :], newshape=(-1, 3))
+            assert r['obj_labels'].size * 3 == r['point_cloud'].size
+
+        return r
+
+    raise RuntimeError("Unknown data format.")
 
 
 def _int64_feature(value):
@@ -58,7 +79,7 @@ def get_hdf5_files(dataset):
 
     def get_hdf5_files_from_list(filelist):
         with open(filelist, 'r') as f:
-            files = sorted([l for l in f.readlines() if l.endswith('.hdf5')])
+            files = sorted([l.strip() for l in f.readlines() if l.strip().endswith('.hdf5')])
         return files
 
     if os.path.isfile(dataset):
@@ -102,7 +123,7 @@ def convert_to(files, dataset_name, output_dir, samples_per_file=None):
 
             for file in files[file_counter * samples_per_file: (file_counter+1)*samples_per_file]:
                 try:
-                    data = read_hdf5(file)
+                    data = read_hdf5(file, 'lidar_semantics')
                 except OSError:
                     print("Could not read {}. Skipping.".format(file))
                     continue
