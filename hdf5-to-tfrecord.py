@@ -51,12 +51,28 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def convert_to(directory, dataset_name, samples_per_file=None):
+def get_hdf5_files(dataset):
 
-    files = sorted([os.path.join(directory, file) for file in os.listdir(directory) if file.endswith('.hdf5')])
+    def get_hdf5_files_in_directory(directory):
+        return sorted([os.path.join(directory, file) for file in os.listdir(directory) if file.endswith('.hdf5')])
+
+    def get_hdf5_files_from_list(filelist):
+        with open(filelist, 'r') as f:
+            files = sorted([l for l in f.readlines() if l.endswith('.hdf5')])
+        return files
+
+    if os.path.isfile(dataset):
+        return get_hdf5_files_from_list(dataset)
+    elif os.path.isdir(dataset):
+        return get_hdf5_files_in_directory(dataset)
+    else:
+        raise RuntimeError("Could not retrieve input files from {}".format(dataset))
+
+
+def convert_to(files, dataset_name, output_dir, samples_per_file=None):
+
     if not files:
-        print("No files for dataset {}".format(dataset_name))
-        return
+        raise RuntimeError("No files")
 
     if samples_per_file is None:
         samples_per_file = len(files)
@@ -70,7 +86,7 @@ def convert_to(directory, dataset_name, samples_per_file=None):
     # filename formatting
     digits = math.ceil(math.log10(total))
     f_str = '0{}d'.format(digits)
-    filename = os.path.join(directory, dataset_name + '_{{:{}}}_of_{{:{}}}.tfrecords'.format(f_str, f_str))
+    filename = os.path.join(output_dir, dataset_name + '_{{:{}}}_of_{{:{}}}.tfrecords'.format(f_str, f_str))
 
     if bar_available:
         bar = progressbar.ProgressBar(redirect_stdout=True, max_value=len(files))
@@ -122,7 +138,7 @@ def convert_to(directory, dataset_name, samples_per_file=None):
                 processed_counter += 1
 
     # write filelist
-    f_list_name = os.path.join(directory, 'tf_dataset_{}.txt'.format(dataset_name))
+    f_list_name = os.path.join(output_dir, 'tf_dataset_{}.txt'.format(dataset_name))
     with open(f_list_name, 'w') as file:
         for f in filelist:
             file.write(f + '\n')
@@ -133,12 +149,27 @@ def convert_to(directory, dataset_name, samples_per_file=None):
 
 def main(unused_argv):
 
+    if FLAGS.output:
+        output_dir = FLAGS.output
+    else:
+        output_dir = os.getcwd()
+
     samples_per_file = None
     if FLAGS.filesize:
         samples_per_file = FLAGS.filesize
 
-    convert_to(FLAGS.train_dir, 'train', samples_per_file)
-    convert_to(FLAGS.val_dir, 'val', samples_per_file)
+    for counter, dataset in enumerate(FLAGS.datasets):
+        files = get_hdf5_files(dataset)
+        if not files:
+            print("No data in {}. Skipping.".format(dataset))
+            continue
+        foldername = '{:02d}'.format(counter)
+        folderpath = os.path.join(output_dir, foldername)
+        try:
+            os.makedirs(folderpath)
+        except FileExistsError:
+            pass
+        convert_to(files, dataset_name=foldername, output_dir=folderpath, samples_per_file=samples_per_file)
 
 
 if __name__ == '__main__':
@@ -152,10 +183,11 @@ if __name__ == '__main__':
             raise argparse.ArgumentTypeError("{0} is not a directory".format(x))
         return x
 
+    # allow multiple datasets: either path to folders
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train_dir', metavar='directory', type=is_valid_folder)
-    parser.add_argument('--val_dir', metavar='directory', type=is_valid_folder)
     parser.add_argument('--filesize', metavar='N', type=int)
+    parser.add_argument('--output', metavar='directory', type=is_valid_folder)
+    parser.add_argument('datasets', nargs='+')
 
-    FLAGS, unparsed = parser.parse_known_args()
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    FLAGS = parser.parse_args()
+    tf.app.run(main=main, argv=sys.argv)
